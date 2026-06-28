@@ -103,7 +103,8 @@ export async function authenticate({
     const adminPassword = securityConfig.auth.admin.adminPassword;
     const userAuthCode = securityConfig.auth.user.authCode;
 
-    const adminConfigured = !!(adminUsername && adminUsername.trim()) || !!(adminPassword && adminPassword.trim());
+    // 修改为逻辑与 (&&)，必须同时配置用户名和密码才代表启用了管理员认证
+    const adminConfigured = !!(adminUsername && adminUsername.trim()) && !!(adminPassword && adminPassword.trim());
     const authCodeConfigured = !!(userAuthCode && userAuthCode.trim());
 
     // --- API Token 验证（公共层，所有 scope 通用） ---

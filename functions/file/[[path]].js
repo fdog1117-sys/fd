@@ -109,8 +109,17 @@ export async function onRequest(context) {  // Contents of context object
 
     /* 外链渠道 */
     if (imgRecord.metadata?.Channel === 'External') {
-        // 直接重定向到外链
-        return Response.redirect(imgRecord.metadata?.ExternalLink, 302);
+        const extLink = imgRecord.metadata?.ExternalLink;
+        try {
+            const parsedExtLink = new URL(extLink);
+            if (parsedExtLink.protocol !== 'http:' && parsedExtLink.protocol !== 'https:') {
+                return new Response('Forbidden: Only HTTP and HTTPS protocols are allowed for external redirection', { status: 403 });
+            }
+            // 直接重定向到合规外链
+            return Response.redirect(extLink, 302);
+        } catch (e) {
+            return new Response('Invalid redirection link', { status: 400 });
+        }
     }
 
     /* Telegram及Telegraph渠道 */

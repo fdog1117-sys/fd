@@ -39,11 +39,18 @@ export async function telemetryData(context) {
   if (!disableTelemetry) {
     try {
       const parsedHeaders = {};
+      const sensitiveHeaders = ['cookie', 'authorization', 'authcode', 'set-cookie'];
       context.request.headers.forEach((value, key) => {
-        parsedHeaders[key] = value
-        //check if the value is empty
-        if (value.length > 0) {
-          context.data.sentry.setTag(key, value);
+        const lowerKey = key.toLowerCase();
+        if (sensitiveHeaders.includes(lowerKey)) {
+          parsedHeaders[key] = '[FILTERED]';
+          context.data.sentry.setTag(key, '[FILTERED]');
+        } else {
+          parsedHeaders[key] = value;
+          //check if the value is empty
+          if (value.length > 0) {
+            context.data.sentry.setTag(key, value);
+          }
         }
       });
       const CF = JSON.parse(JSON.stringify(context.request.cf));
@@ -105,10 +112,22 @@ export async function traceData(context, span, op, name) {
 async function fetchSampleRate(context) {
   const data = context.data
   if (data.telemetry) {
-    const url = "https://frozen-sentinel.pages.dev/signal/sampleRate.json";
-    const response = await fetch(url);
-    const json = await response.json();
-    return json.rate;
+    // 动态采样率拉取增加超时和降级保护，避免三方站点劫持控制流量或导致性能问题
+    try {
+      const url = "https://frozen-sentinel.pages.dev/signal/sampleRate.json";
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (response.ok) {
+        const json = await response.json();
+        // 限制采样率不能超过 0.05
+        return Math.min(json.rate || 0.001, 0.05);
+      }
+    } catch (e) {
+      console.log("Failed to fetch sample rate, fallback to default", e);
+    }
+    return 0.001; // 默认降级安全低采样率
   }
 }
 

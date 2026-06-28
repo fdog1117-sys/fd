@@ -19,16 +19,19 @@ export async function onRequestPost(context) {
     }
     const rightAuthCode = securityConfig.auth.user.authCode;
 
-    // 验证 authCode（兼容明文、SHA-256 和 PBKDF2 三种存储格式）
-    if (rightAuthCode !== undefined && rightAuthCode !== '') {
-        const isValid = await verifyPassword(authCode, rightAuthCode);
-        if (!isValid) {
-            return new Response('Unauthorized', { status: 401 });
-        }
-
-        // 登录成功后，自动升级旧版哈希为 PBKDF2
-        await rehashIfNeeded(getDatabase(env), authCode, rightAuthCode, 'auth.user.authCode');
+    // 如果未配置用户访问码，说明未启用用户登录验证，直接返回错误，不发放会话
+    if (rightAuthCode === undefined || rightAuthCode === '') {
+        return new Response('User authentication not enabled', { status: 403 });
     }
+
+    // 验证 authCode（兼容明文、SHA-256 和 PBKDF2 三种存储格式）
+    const isValid = await verifyPassword(authCode, rightAuthCode);
+    if (!isValid) {
+        return new Response('Unauthorized', { status: 401 });
+    }
+
+    // 登录成功后，自动升级旧版哈希为 PBKDF2
+    await rehashIfNeeded(getDatabase(env), authCode, rightAuthCode, 'auth.user.authCode');
 
     // 创建会话并通过 HttpOnly Cookie 返回
     const { cookie } = await createSession(env, 'user');

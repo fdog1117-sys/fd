@@ -25,12 +25,12 @@ export async function initializeChunkedUpload(context) {
 
         // 生成唯一的 uploadId
         const timestamp = Date.now();
-        const random = Math.random().toString(36).slice(2, 11);
+        const random = crypto.randomUUID().replace(/-/g, '').substring(0, 12);
         const uploadId = `upload_${timestamp}_${random}`;
 
         // 获取上传IP
         const uploadIp = getUploadIp(request);
-        const ipAddress = await getIPAddress(env, uploadIp, context.securityConfig);
+        const ipAddress = await getIPAddress(uploadIp);
 
         // 获取上传渠道
         const uploadChannel = url.searchParams.get('uploadChannel') || 'telegram';

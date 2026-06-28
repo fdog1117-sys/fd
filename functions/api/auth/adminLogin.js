@@ -24,16 +24,16 @@ export async function onRequestPost(context) {
 
     const usernameConfigured = !!(adminUsername && adminUsername.trim());
     const passwordConfigured = !!(adminPassword && adminPassword.trim());
-    const adminConfigured = usernameConfigured || passwordConfigured;
+    
+    // 必须同时配置用户名和密码
+    const adminConfigured = usernameConfigured && passwordConfigured;
 
-    // 管理员未配置，无需认证，直接创建会话
+    // 如果管理员未完全配置，不允许直接登录生成会话，引导其先进行安全配置或在后台补充环境变量
     if (!adminConfigured) {
-        const { cookie } = await createSession(env, 'admin');
-        return new Response(JSON.stringify({ success: true }), {
-            status: 200,
+        return new Response(JSON.stringify({ error: 'Admin credentials not configured. Please set BASIC_USER and BASIC_PASS environment variables.' }), {
+            status: 403,
             headers: {
                 'Content-Type': 'application/json',
-                'Set-Cookie': cookie,
             },
         });
     }

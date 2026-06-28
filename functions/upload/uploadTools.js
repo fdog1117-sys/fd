@@ -24,89 +24,44 @@ export function createResponse(body, options = {}) {
 // 生成短链接
 export function generateShortId(length = 8) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const array = new Uint8Array(length);
+    crypto.getRandomValues(array);
     let result = '';
     for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
+        result += chars.charAt(array[i] % chars.length);
     }
     return result;
 }
 
-const UNKNOWN_IP_ADDRESS = '未知';
-
 // 获取IP地址
-export async function getIPAddress(env, ip, securityConfig = null) {
-    if (!env || !ip) return UNKNOWN_IP_ADDRESS;
-
+export async function getIPAddress(ip) {
+    let address = '未知';
     try {
-        const config = securityConfig || await fetchSecurityConfig(env);
-        const ipQuery = config?.upload?.ipQuery;
+        const ipInfo = await fetch(`https://apimobile.meituan.com/locate/v2/ip/loc?rgeo=true&ip=${ip}`);
+        const ipData = await ipInfo.json();
 
-        if (!ipQuery?.enabled || ipQuery.channel !== 'customApi') {
-            return UNKNOWN_IP_ADDRESS;
-        }
+        if (ipInfo.ok && ipData.data) {
+            const lng = ipData.data?.lng || 0;
+            const lat = ipData.data?.lat || 0;
 
-        const customApi = ipQuery.customApi || {};
-        if (!customApi.url) {
-            return UNKNOWN_IP_ADDRESS;
-        }
+            // 读取具体地址
+            const addressInfo = await fetch(`https://apimobile.meituan.com/group/v1/city/latlng/${lat},${lng}?tag=0`);
+            const addressData = await addressInfo.json();
 
-        const responseFields = Array.isArray(customApi.responseFields)
-            ? customApi.responseFields
-                .map(field => typeof field === 'string' ? field : field?.path || '')
-                .filter(Boolean)
-            : [];
-        if (responseFields.length === 0) {
-            return UNKNOWN_IP_ADDRESS;
-        }
-
-        const replaceIpPlaceholder = value => String(value ?? '').replace(/\{ip\}/g, ip);
-        const queryUrl = new URL(replaceIpPlaceholder(customApi.url));
-        const paramList = Array.isArray(customApi.params) ? customApi.params : [];
-        for (const param of paramList) {
-            const key = replaceIpPlaceholder(param?.key || '');
-            if (!key) continue;
-            queryUrl.searchParams.append(key, replaceIpPlaceholder(param?.value || ''));
-        }
-
-        const response = await fetch(queryUrl.toString());
-        if (!response.ok) {
-            return UNKNOWN_IP_ADDRESS;
-        }
-
-        const data = JSON.parse((await response.text()).trim());
-        const formatValue = value => {
-            if (Array.isArray(value)) {
-                return value.map(formatValue).filter(Boolean).join(', ');
+            if (addressInfo.ok && addressData.data) {
+                // 根据各字段是否存在，拼接地址
+                address = [
+                    addressData.data.detail,
+                    addressData.data.city,
+                    addressData.data.province,
+                    addressData.data.country
+                ].filter(Boolean).join(', ');
             }
-            if (typeof value === 'object' && value !== null) {
-                return JSON.stringify(value);
-            }
-            return String(value ?? '').trim();
-        };
-
-        const address = responseFields
-            .map(path => {
-                const value = String(path)
-                    .replace(/\[(\d+)\]/g, '.$1')
-                    .split('.')
-                    .map(segment => segment.trim())
-                    .filter(Boolean)
-                    .reduce((current, segment) => {
-                        if (current === undefined || current === null) return undefined;
-                        return current[segment];
-                    }, data);
-
-                if (value === undefined || value === null || value === '') return '';
-                return formatValue(value);
-            })
-            .filter(Boolean)
-            .join('，');
-
-        return address || UNKNOWN_IP_ADDRESS;
+        }
     } catch (error) {
         console.error('Error fetching IP address:', error);
-        return UNKNOWN_IP_ADDRESS;
     }
+    return address;
 }
 
 // 处理文件名中的特殊字符
@@ -155,7 +110,7 @@ export function sanitizeUploadFolder(folder) {
     // 移除开头的 /
     folder = folder.replace(/^\/+/, '');
 
-    // 移除末尾的 /
+    // 移除末尾 of /
     folder = folder.replace(/\/+$/, '');
 
     // 对每个路径段进行特殊字符处理
@@ -171,13 +126,14 @@ export function sanitizeUploadFolder(folder) {
     return sanitizedSegments.join('/');
 }
 
-// 检查文件扩展名是否有效
+// 检查文件扩展名是否有效 (已移除 exe, msi, php, bat, cmd, ps1, sh, html 等危险脚本或二进制格式)
 export function isExtValid(fileExt) {
     return ['jpeg', 'jpg', 'png', 'gif', 'webp',
         'mp4', 'mp3', 'ogg',
-        'mp3', 'wav', 'flac', 'aac', 'opus',
+        'wav', 'flac', 'aac', 'opus',
         'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'pdf',
-        'txt', 'md', 'json', 'xml', 'html', 'css', 'js', 'ts', 'go', 'java', 'php', 'py', 'rb', 'sh', 'bat', 'cmd', 'ps1', 'psm1', 'psd', 'ai', 'sketch', 'fig', 'svg', 'eps', 'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'apk', 'exe', 'msi', 'dmg', 'iso', 'torrent', 'webp', 'ico', 'svg', 'ttf', 'otf', 'woff', 'woff2', 'eot', 'apk', 'crx', 'xpi', 'deb', 'rpm', 'jar', 'war', 'ear', 'img', 'iso', 'vdi', 'ova', 'ovf', 'qcow2', 'vmdk', 'vhd', 'vhdx', 'pvm', 'dsk', 'hdd', 'bin', 'cue', 'mds', 'mdf', 'nrg', 'ccd', 'cif', 'c2d', 'daa', 'b6t', 'b5t', 'bwt', 'isz', 'isz', 'cdi', 'flp', 'uif', 'xdi', 'sdi'
+        'txt', 'md', 'json', 'xml', 'css', 'js', 'ts', 'go', 'java', 'py', 'rb',
+        'ai', 'sketch', 'fig', 'svg', 'eps', 'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'dmg', 'iso', 'torrent', 'ico', 'ttf', 'otf', 'woff', 'woff2', 'eot', 'crx', 'xpi', 'deb', 'rpm', 'jar', 'war', 'ear', 'img', 'vdi', 'ova', 'ovf', 'qcow2', 'vmdk', 'vhd', 'vhdx', 'pvm', 'dsk', 'hdd', 'bin', 'cue', 'mds', 'mdf', 'nrg', 'ccd', 'cif', 'c2d', 'daa', 'b6t', 'b5t', 'bwt', 'isz', 'cdi', 'flp', 'uif', 'xdi', 'sdi'
     ].includes(fileExt);
 }
 /**

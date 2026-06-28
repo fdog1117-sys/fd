@@ -126,7 +126,7 @@ export async function verifyPassword(inputPassword, storedPassword) {
         }
         const salt = parts[2];
         const expectedHash = await hashPassword(inputPassword, salt);
-        return timingSafeEqual(expectedHash, storedPassword);
+        return await timingSafeEqual(expectedHash, storedPassword);
     } else if (storedPassword.startsWith(HASH_PREFIX_SHA256)) {
         // 旧版 SHA-256 哈希格式：$sha256$salt$hash
         const parts = storedPassword.split('$');
@@ -136,7 +136,7 @@ export async function verifyPassword(inputPassword, storedPassword) {
         }
         const salt = parts[2];
         const expectedHash = await hashPasswordSHA256(inputPassword, salt);
-        return timingSafeEqual(expectedHash, storedPassword);
+        return await timingSafeEqual(expectedHash, storedPassword);
     } else {
         // 存储的是明文密码，直接比对（向后兼容）
         return inputPassword === storedPassword;
@@ -144,18 +144,18 @@ export async function verifyPassword(inputPassword, storedPassword) {
 }
 
 /**
- * 恒定时间字符串比较，防止时序攻击
+ * 恒定时间字符串比较，防止时序攻击及长度泄露
+ * 通过将输入先计算为固定长度的 SHA-256 哈希，再进行逐字节异或比较
  * @param {string} a
  * @param {string} b
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function timingSafeEqual(a, b) {
-    if (a.length !== b.length) {
-        return false;
-    }
+export async function timingSafeEqual(a, b) {
     const encoder = new TextEncoder();
-    const bufA = encoder.encode(a);
-    const bufB = encoder.encode(b);
+    const digestA = await crypto.subtle.digest('SHA-256', encoder.encode(a));
+    const digestB = await crypto.subtle.digest('SHA-256', encoder.encode(b));
+    const bufA = new Uint8Array(digestA);
+    const bufB = new Uint8Array(digestB);
     let result = 0;
     for (let i = 0; i < bufA.length; i++) {
         result |= bufA[i] ^ bufB[i];
